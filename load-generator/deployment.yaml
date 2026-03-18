@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: yolo-load-generator
+  namespace: yolo             
   labels:
     app: yolo-load
 spec:
@@ -26,7 +27,7 @@ spec:
         
         command: ["python", "load-client.py"]
         args:
-          - "--api-url=http://yolo-api:8080"
+          - "--api-url=http://yolo-api.yolo.svc.cluster.local:8080" 
           - "--workers=$(WORKERS)"
           # Run forever (no --duration)
         
