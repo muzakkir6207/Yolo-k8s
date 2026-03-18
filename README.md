@@ -59,11 +59,6 @@ docker push hamidhrf/yolo-load-generator:v1
 cd ..
 ```
 
-Or use the build script:
-```bash
-./build.sh
-```
-
 ### 2. Deploy YOLO Inference
 
 ```bash
