@@ -274,7 +274,7 @@ MIT License (YOLO model follows Ultralytics AGPL-3.0)
 
 ## Author
 
-Created for YOLO inference experiments on Kubernetes with GPU acceleration in FH dortmund by Hamidreza Fathollahzadeh
+Created for YOLO inference experiments on Kubernetes with GPU acceleration at FH dortmund by Hamidreza Fathollahzadeh
 
 **Docker Hub:**
 - YOLO Inference: `hamidhrf/yolo-flask:v1`
