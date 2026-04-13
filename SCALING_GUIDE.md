@@ -1,5 +1,7 @@
 # GPU Saturation Guide
 
+For step-by-step load generation with a single inference pod and one-by-one replica increases, see [LOAD_GENERATION_GUIDE.md](LOAD_GENERATION_GUIDE.md).
+
 The basic YOLO deployment is a **passive API server**. It waits for requests but generates NO load by itself.
 
 ```yaml

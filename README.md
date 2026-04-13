@@ -31,6 +31,7 @@ yolo-k8s-ready/
 │   ├── deployment.yaml     # Load generator K8s manifest
 │   └── README.md           # Load generator usage guide
 ├── README.md               # This file
+├── LOAD_GENERATION_GUIDE.md # Step-by-step load ramp guide
 └── SCALING_GUIDE.md        # GPU saturation strategies
 ```
 
@@ -69,13 +70,13 @@ kubectl apply -f k8s/deployment.yaml
 
 ```bash
 # Check pod status
-kubectl get pods -l app=yolo
+kubectl get pods -n yolo1 -l app=yolo
 
 # Check logs
-kubectl logs -f deployment/yolo-inference
+kubectl logs -f deployment/yolo-inference -n yolo1
 
 # Expected output:
-# Loading model: yolov8n.pt
+# Loading model: yolov8x.pt
 # Model loaded successfully
 # Starting Flask server on 0.0.0.0:8080
 ```
@@ -84,7 +85,7 @@ kubectl logs -f deployment/yolo-inference
 
 ```bash
 # Port forward
-kubectl port-forward svc/yolo-api 8080:8080
+kubectl port-forward svc/yolo-api -n yolo1 8080:8080
 
 # Health check
 curl http://localhost:8080/health
@@ -122,7 +123,7 @@ kubectl get pods -n kube-system | grep nvidia-device-plugin
 
 2. **Check GPU allocation:**
 ```bash
-kubectl describe pod -l app=yolo | grep -A 5 "Limits:"
+kubectl describe pod -n yolo1 -l app=yolo | grep -A 5 "Limits:"
 
 # Should show:
 #   Limits:
@@ -135,7 +136,7 @@ kubectl describe pod -l app=yolo | grep -A 5 "Limits:"
 nvidia-smi
 
 # Or inside the pod
-kubectl exec -it deployment/yolo-inference -- nvidia-smi
+kubectl exec -it deployment/yolo-inference -n yolo1 -- nvidia-smi
 ```
 
 ### GPU Workload Switching
@@ -158,29 +159,27 @@ kubectl scale deployment <other-gpu-workload> --replicas=1
 
 ## Load Generation & GPU Saturation
 
-See [SCALING_GUIDE.md](SCALING_GUIDE.md) for detailed GPU saturation strategies.
+See [LOAD_GENERATION_GUIDE.md](LOAD_GENERATION_GUIDE.md) for step-by-step load generation and one-by-one scaling.
+
+See [SCALING_GUIDE.md](SCALING_GUIDE.md) for broader GPU saturation strategies.
 
 ### Quick Load Test
 
 ```bash
-# Deploy load generator (1 replica = ~15 req/s)
+# Deploy load generator
 kubectl apply -f load-generator/deployment.yaml
 
-# Watch load
+# Start with one replica
+kubectl scale deployment yolo-load-generator -n yolo1 --replicas=1
+
+# Watch load and GPU
 kubectl logs -f deployment/yolo-load-generator
+nvidia-smi dmon -s u -c 20
 
-# Scale to saturate GPU
-kubectl scale deployment yolo-load-generator --replicas=5   # ~75 req/s, 60-80% GPU
-kubectl scale deployment yolo-load-generator --replicas=10  # ~150 req/s, 90-100% GPU
-
-# Monitor GPU
-nvidia-smi dmon -s u -c 100
+# Increase one step at a time
+kubectl scale deployment yolo-load-generator -n yolo1 --replicas=2
+kubectl scale deployment yolo-load-generator -n yolo1 --replicas=3
 ```
-
-**Expected throughput (H100 NVL GPU):**
-- YOLOv8n: ~150-200 req/s @ 100% GPU
-- YOLOv8s: ~100-150 req/s @ 100% GPU
-- YOLOv8m: ~50-80 req/s @ 100% GPU
 
 ---
 

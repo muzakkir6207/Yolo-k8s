@@ -2,11 +2,11 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: yolo-load-generator
-  namespace: yolo             
+  namespace: yolo1
   labels:
     app: yolo-load
 spec:
-  # START WITH 1, SCALE UP TO SATURATE GPU
+  # Start with 1 and scale up one step at a time while watching GPU load.
   replicas: 1
   selector:
     matchLabels:
@@ -18,17 +18,20 @@ spec:
     spec:
       containers:
       - name: load-generator
-        image: hamidhrf/yolo-load-generator:v1
+        image: muzakkir6207/yolo-load-generator:v1
         
         env:
         # Adjust workers per pod to control load
         - name: WORKERS
-          value: "4"
+          value: "8"
+        - name: IMAGE_SIZE
+          value: "1280"
         
         command: ["python", "load-client.py"]
         args:
-          - "--api-url=http://yolo-api.yolo.svc.cluster.local:8080" 
+          - "--api-url=http://yolo-api.yolo1.svc.cluster.local:8080"
           - "--workers=$(WORKERS)"
+          - "--image-size=$(IMAGE_SIZE)"
           # Run forever (no --duration)
         
         # No resource limits - load generator is lightweight
