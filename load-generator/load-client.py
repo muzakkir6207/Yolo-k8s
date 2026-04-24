@@ -33,11 +33,19 @@ logger = logging.getLogger(__name__)
 
 
 class LoadGenerator:
-    def __init__(self, api_url, num_workers=4, image_size=640, summary_interval=10):
+    def __init__(
+        self,
+        api_url,
+        num_workers=4,
+        image_size=640,
+        summary_interval=10,
+        worker_delay_ms=0,
+    ):
         self.api_url = api_url
         self.num_workers = num_workers
         self.image_size = image_size
         self.summary_interval = summary_interval
+        self.worker_delay_ms = worker_delay_ms
         self.total_requests = 0
         self.total_errors = 0
         self.running = True
@@ -104,6 +112,8 @@ class LoadGenerator:
         logger.info("Worker %s started", worker_id)
         while self.running:
             self.send_request(worker_id)
+            if self.worker_delay_ms > 0 and self.running:
+                time.sleep(self.worker_delay_ms / 1000.0)
 
     def snapshot(self):
         with self.lock:
@@ -114,6 +124,7 @@ class LoadGenerator:
         logger.info("Starting load generation with %s workers", self.num_workers)
         logger.info("Target: %s", self.api_url)
         logger.info("Image size: %sx%s", self.image_size, self.image_size)
+        logger.info("Worker delay: %sms", self.worker_delay_ms)
         logger.info("Duration: %s", f"{duration}s" if duration else "infinite")
 
         start_time = time.time()
@@ -176,14 +187,20 @@ if __name__ == "__main__":
                         help='Image size (default: 640)')
     parser.add_argument('--summary-interval', type=int, default=10,
                         help='Summary logging interval in seconds (default: 10)')
+    parser.add_argument('--worker-delay-ms', type=int, default=0,
+                        help='Delay after each request per worker in milliseconds (default: 0)')
 
     args = parser.parse_args()
+
+    if args.worker_delay_ms < 0:
+        parser.error('--worker-delay-ms must be >= 0')
 
     generator = LoadGenerator(
         api_url=args.api_url,
         num_workers=args.workers,
         image_size=args.image_size,
         summary_interval=args.summary_interval,
+        worker_delay_ms=args.worker_delay_ms,
     )
 
     generator.run(duration=args.duration)

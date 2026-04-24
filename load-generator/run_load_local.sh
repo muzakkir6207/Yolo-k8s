@@ -4,10 +4,10 @@ set -euo pipefail
 usage() {
   cat >&2 <<'EOF'
 usage:
-  run_load_local.sh <duration-seconds> [workers] [image-size]
-  run_load_local.sh <duration-seconds> --percent-load <1-100> [--instance-count N] [--max-workers-per-instance N] [--image-size PX] [--api-url URL]
-  run_load_local.sh <duration-seconds> --percent-load <1-100> --api-url URL [--api-url URL ...] [--max-workers-per-instance N] [--image-size PX]
-  run_load_local.sh <duration-seconds> --percent-loads <P1,P2,...> --api-url URL [--api-url URL ...] [--max-workers-per-instance N] [--image-size PX]
+  run_load_local.sh <duration-seconds> [workers] [image-size] [--worker-delay-ms MS]
+  run_load_local.sh <duration-seconds> --percent-load <1-100> [--instance-count N] [--max-workers-per-instance N] [--image-size PX] [--api-url URL] [--worker-delay-ms MS]
+  run_load_local.sh <duration-seconds> --percent-load <1-100> --api-url URL [--api-url URL ...] [--max-workers-per-instance N] [--image-size PX] [--worker-delay-ms MS]
+  run_load_local.sh <duration-seconds> --percent-loads <P1,P2,...> --api-url URL [--api-url URL ...] [--max-workers-per-instance N] [--image-size PX] [--worker-delay-ms MS]
 
 examples:
   ./load-generator/run_load_local.sh 600 1
@@ -15,6 +15,7 @@ examples:
   ./load-generator/run_load_local.sh 600 --percent-load 22 --instance-count 3 --max-workers-per-instance 10
   ./load-generator/run_load_local.sh 600 --percent-load 10 --api-url http://127.0.0.1:18081 --api-url http://127.0.0.1:18082
   ./load-generator/run_load_local.sh 600 --percent-loads 10,20,30 --api-url http://127.0.0.1:18081 --api-url http://127.0.0.1:18082 --api-url http://127.0.0.1:18083
+  ./load-generator/run_load_local.sh 600 --percent-load 20 --api-url http://127.0.0.1:18081 --api-url http://127.0.0.1:18082 --max-workers-per-instance 10 --worker-delay-ms 250
 EOF
 }
 
@@ -24,6 +25,16 @@ require_positive_int() {
 
   if [[ ! "${value}" =~ ^[0-9]+$ ]] || (( value <= 0 )); then
     echo "${name} must be a positive integer" >&2
+    exit 1
+  fi
+}
+
+require_nonnegative_int() {
+  local name="$1"
+  local value="$2"
+
+  if [[ ! "${value}" =~ ^[0-9]+$ ]]; then
+    echo "${name} must be a non-negative integer" >&2
     exit 1
   fi
 }
@@ -49,6 +60,7 @@ INSTANCE_COUNT=""
 MAX_WORKERS_PER_INSTANCE="10"
 API_URL="http://127.0.0.1:18080"
 API_URLS=()
+WORKER_DELAY_MS="0"
 
 LEGACY_ARGS=()
 while [[ $# -gt 0 && "$1" != --* ]]; do
@@ -94,6 +106,10 @@ while [[ $# -gt 0 ]]; do
       WORKERS="${2:-}"
       shift 2
       ;;
+    --worker-delay-ms)
+      WORKER_DELAY_MS="${2:-}"
+      shift 2
+      ;;
     --image-size)
       IMAGE_SIZE="${2:-}"
       shift 2
@@ -117,6 +133,7 @@ done
 
 require_positive_int "duration-seconds" "${DURATION_SECONDS}"
 require_positive_int "image-size" "${IMAGE_SIZE}"
+require_nonnegative_int "worker-delay-ms" "${WORKER_DELAY_MS}"
 
 if [[ -n "${PERCENT_LOAD}" && -n "${PERCENT_LOADS}" ]]; then
   echo "--percent-load cannot be combined with --percent-loads" >&2
@@ -179,6 +196,7 @@ if [[ -n "${PERCENT_LOADS}" ]]; then
   echo "reference load per instance : ${MAX_WORKERS_PER_INSTANCE} workers"
   echo "duration                    : ${DURATION_SECONDS}s"
   echo "image size                  : ${IMAGE_SIZE}"
+  echo "worker delay                : ${WORKER_DELAY_MS}ms"
 
   CHILD_PIDS=()
   cleanup() {
@@ -205,7 +223,8 @@ if [[ -n "${PERCENT_LOADS}" ]]; then
       --api-url "${API_URLS[i]}" \
       --workers "${workers_for_target}" \
       --image-size "${IMAGE_SIZE}" \
-      --duration "${DURATION_SECONDS}" &
+      --duration "${DURATION_SECONDS}" \
+      --worker-delay-ms "${WORKER_DELAY_MS}" &
     CHILD_PIDS+=("$!")
   done
 
@@ -249,6 +268,7 @@ if [[ -n "${PERCENT_LOAD}" ]]; then
     echo "reference load per instance : ${MAX_WORKERS_PER_INSTANCE} workers"
     echo "duration                    : ${DURATION_SECONDS}s"
     echo "image size                  : ${IMAGE_SIZE}"
+    echo "worker delay                : ${WORKER_DELAY_MS}ms"
 
     CHILD_PIDS=()
     cleanup() {
@@ -275,7 +295,8 @@ if [[ -n "${PERCENT_LOAD}" ]]; then
         --api-url "${API_URLS[i]}" \
         --workers "${workers_for_target}" \
         --image-size "${IMAGE_SIZE}" \
-        --duration "${DURATION_SECONDS}" &
+        --duration "${DURATION_SECONDS}" \
+        --worker-delay-ms "${WORKER_DELAY_MS}" &
       CHILD_PIDS+=("$!")
     done
 
@@ -325,10 +346,12 @@ else
 fi
 echo "duration                    : ${DURATION_SECONDS}s"
 echo "image size                  : ${IMAGE_SIZE}"
+echo "worker delay                : ${WORKER_DELAY_MS}ms"
 echo "api url                     : ${API_URL}"
 
 exec python3 /home/user/Yolo-k8s/load-generator/load-client.py \
   --api-url "${API_URL}" \
   --workers "${WORKERS}" \
   --image-size "${IMAGE_SIZE}" \
-  --duration "${DURATION_SECONDS}"
+  --duration "${DURATION_SECONDS}" \
+  --worker-delay-ms "${WORKER_DELAY_MS}"

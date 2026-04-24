@@ -44,16 +44,18 @@ Use these rules for the entire series:
 2. Keep the test duration fixed at `600` seconds unless you intentionally change it.
 3. For multi-instance tests, do not use a single service port-forward to `svc/yolo-api`.
 4. For multi-instance tests, port-forward each pod separately and pass one `--api-url` per pod.
-5. Use a fresh local port range for each new test group when possible, for example `19081`, `19082`, `19083`.
+5. Use a fresh local port range for each new test group when possible, for example `19081`, `19082`, `19083`, `19084`, `19085`.
 6. Before starting load, verify every forwarded port with `/health`.
-7. Keep `--max-workers-per-instance` fixed for a given experiment series so the percentages stay comparable.
+7. Keep `--max-workers-per-instance` and `--worker-delay-ms` fixed for a given experiment series so the percentages stay comparable.
 8. Record both the requested load and the actual mapping printed by `run_load_local.sh`.
 
 Recommended reference:
 
 - duration: `600` seconds
 - image size: `1280`
-- max workers per instance: `10`
+- percent load: `20`
+- max workers per instance: `5`
+- worker delay: `100ms`
 
 ## Common Setup
 
@@ -87,6 +89,8 @@ Example variable assignment:
 POD1="yolo-inference-xxxx"
 POD2="yolo-inference-yyyy"
 POD3="yolo-inference-zzzz"
+POD4="yolo-inference-aaaa"
+POD5="yolo-inference-bbbb"
 ```
 
 ### 4. Clear old local forwards
@@ -120,6 +124,8 @@ curl -sS http://127.0.0.1:19083/health
 
 Only proceed when every target responds.
 
+For `4`- and `5`-instance runs, extend the same pattern to `19084` and `19085`.
+
 ### 7. Watch GPU
 
 ```bash
@@ -136,8 +142,10 @@ Use the following cases as the standard series.
 | `TC-10` | `1` | uniform | Single-instance load sweep |
 | `TC-20` | `2` | uniform | Two-instance load sweep |
 | `TC-30` | `3` | uniform | Three-instance load sweep |
-| `TC-40` | `2` | varied | Two-instance asymmetric load |
-| `TC-50` | `3` | varied | Three-instance asymmetric load |
+| `TC-40` | `4` | uniform | Four-instance load sweep |
+| `TC-50` | `5` | uniform | Five-instance load sweep |
+| `TC-60` | `2` | varied | Two-instance asymmetric load |
+| `TC-70` | `3` | varied | Three-instance asymmetric load |
 
 ## TC-00: Idle Baseline
 
@@ -185,18 +193,21 @@ Health check:
 curl -sS http://127.0.0.1:19081/health
 ```
 
-Run one cycle at a time. Keep the command the same and only change `PERCENT`.
+Run one cycle at a time. Use the same command and replace the literal `20` with the next sweep value.
 
 Allowed values for the sweep:
 
 - `10`, `20`, `30`, `40`, `50`, `60`, `70`, `80`, `90`, `100`
 
-Command pattern:
+Recommended calibrated command pattern:
 
 ```bash
 cd ~/Yolo-k8s/load-generator
-PERCENT=100
-./run_load_local.sh 600 --percent-load "$PERCENT" --api-url http://127.0.0.1:19081 --max-workers-per-instance 10
+./run_load_local.sh 600 \
+  --percent-load 20 \
+  --api-url http://127.0.0.1:19081 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
 ```
 
 Expected behavior:
@@ -236,19 +247,28 @@ curl -sS http://127.0.0.1:19081/health
 curl -sS http://127.0.0.1:19082/health
 ```
 
-Run one cycle at a time. Keep the command the same and only change `PERCENT`.
+Run one cycle at a time. Use the same command and replace the literal `20` with the next sweep value.
 
 Allowed values for the sweep:
 
 - `10`, `20`, `30`, `40`, `50`, `60`, `70`, `80`, `90`, `100`
 
-Command pattern:
+Recommended calibrated command pattern:
 
 ```bash
 cd ~/Yolo-k8s/load-generator
-PERCENT=100
-./run_load_local.sh 600 --percent-load "$PERCENT" --api-url http://127.0.0.1:19081 --api-url http://127.0.0.1:19082 --max-workers-per-instance 10
+./run_load_local.sh 600 \
+  --percent-load 20 \
+  --api-url http://127.0.0.1:19081 \
+  --api-url http://127.0.0.1:19082 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
 ```
+
+Observed validation sample for that calibrated `2`-instance run:
+
+- GPU `sm` mostly around `17%` to `36%`
+- GPU `mem` mostly around `4%` to `7%`
 
 Expected behavior:
 
@@ -290,18 +310,23 @@ curl -sS http://127.0.0.1:19082/health
 curl -sS http://127.0.0.1:19083/health
 ```
 
-Run one cycle at a time. Keep the command the same and only change `PERCENT`.
+Run one cycle at a time. Use the same command and replace the literal `20` with the next sweep value.
 
 Allowed values for the sweep:
 
 - `10`, `20`, `30`, `40`, `50`, `60`, `70`, `80`, `90`, `100`
 
-Command pattern:
+Recommended calibrated command pattern:
 
 ```bash
 cd ~/Yolo-k8s/load-generator
-PERCENT=100
-./run_load_local.sh 600 --percent-load "$PERCENT" --api-url http://127.0.0.1:19081 --api-url http://127.0.0.1:19082 --api-url http://127.0.0.1:19083 --max-workers-per-instance 10
+./run_load_local.sh 600 \
+  --percent-load 20 \
+  --api-url http://127.0.0.1:19081 \
+  --api-url http://127.0.0.1:19082 \
+  --api-url http://127.0.0.1:19083 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
 ```
 
 Expected behavior:
@@ -310,7 +335,137 @@ Expected behavior:
 - one per target pod
 - aggregate GPU load should increase compared with the single-target service-forward approach
 
-## TC-40: Two-Instance Varied Load
+## TC-40: Four-Instance Uniform Sweep
+
+Purpose:
+
+- measure behavior when four instances receive the same per-instance load
+
+Setup:
+
+```bash
+kubectl scale deployment yolo-inference -n yolo1 --replicas=4
+kubectl rollout status deployment/yolo-inference -n yolo1
+kubectl get pods -n yolo1 -l app=yolo
+```
+
+Port-forward:
+
+```bash
+POD1="yolo-inference-xxxx"
+POD2="yolo-inference-yyyy"
+POD3="yolo-inference-zzzz"
+POD4="yolo-inference-aaaa"
+kubectl port-forward --address 127.0.0.1 -n yolo1 pod/$POD1 19081:8080 &
+kubectl port-forward --address 127.0.0.1 -n yolo1 pod/$POD2 19082:8080 &
+kubectl port-forward --address 127.0.0.1 -n yolo1 pod/$POD3 19083:8080 &
+kubectl port-forward --address 127.0.0.1 -n yolo1 pod/$POD4 19084:8080 &
+wait
+```
+
+Health check:
+
+```bash
+curl -sS http://127.0.0.1:19081/health
+curl -sS http://127.0.0.1:19082/health
+curl -sS http://127.0.0.1:19083/health
+curl -sS http://127.0.0.1:19084/health
+```
+
+Run one cycle at a time. Use the same command and replace the literal `20` with the next sweep value.
+
+Allowed values for the sweep:
+
+- `10`, `20`, `30`, `40`, `50`, `60`, `70`, `80`, `90`, `100`
+
+Recommended calibrated command pattern:
+
+```bash
+cd ~/Yolo-k8s/load-generator
+./run_load_local.sh 600 \
+  --percent-load 20 \
+  --api-url http://127.0.0.1:19081 \
+  --api-url http://127.0.0.1:19082 \
+  --api-url http://127.0.0.1:19083 \
+  --api-url http://127.0.0.1:19084 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
+```
+
+Expected behavior:
+
+- four local client processes
+- one per target pod
+- aggregate GPU load should scale with the extra target
+
+## TC-50: Five-Instance Uniform Sweep
+
+Purpose:
+
+- measure behavior when five instances receive the same per-instance load
+
+Setup:
+
+```bash
+kubectl scale deployment yolo-inference -n yolo1 --replicas=5
+kubectl rollout status deployment/yolo-inference -n yolo1
+kubectl get pods -n yolo1 -l app=yolo
+```
+
+Port-forward:
+
+```bash
+POD1="yolo-inference-xxxx"
+POD2="yolo-inference-yyyy"
+POD3="yolo-inference-zzzz"
+POD4="yolo-inference-aaaa"
+POD5="yolo-inference-bbbb"
+kubectl port-forward --address 127.0.0.1 -n yolo1 pod/$POD1 19081:8080 &
+kubectl port-forward --address 127.0.0.1 -n yolo1 pod/$POD2 19082:8080 &
+kubectl port-forward --address 127.0.0.1 -n yolo1 pod/$POD3 19083:8080 &
+kubectl port-forward --address 127.0.0.1 -n yolo1 pod/$POD4 19084:8080 &
+kubectl port-forward --address 127.0.0.1 -n yolo1 pod/$POD5 19085:8080 &
+wait
+```
+
+Health check:
+
+```bash
+curl -sS http://127.0.0.1:19081/health
+curl -sS http://127.0.0.1:19082/health
+curl -sS http://127.0.0.1:19083/health
+curl -sS http://127.0.0.1:19084/health
+curl -sS http://127.0.0.1:19085/health
+```
+
+Run one cycle at a time. Use the same command and replace the literal `20` with the next sweep value.
+
+Allowed values for the sweep:
+
+- `10`, `20`, `30`, `40`, `50`, `60`, `70`, `80`, `90`, `100`
+
+Recommended calibrated command pattern:
+
+```bash
+cd ~/Yolo-k8s/load-generator
+./run_load_local.sh 600 \
+  --percent-load 20 \
+  --api-url http://127.0.0.1:19081 \
+  --api-url http://127.0.0.1:19082 \
+  --api-url http://127.0.0.1:19083 \
+  --api-url http://127.0.0.1:19084 \
+  --api-url http://127.0.0.1:19085 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
+```
+
+Expected behavior:
+
+- five local client processes
+- one per target pod
+- aggregate GPU load should scale with the extra targets
+
+## TC-60: Two-Instance Varied Load
 
 Purpose:
 
@@ -320,7 +475,7 @@ Setup:
 
 - use the same `2`-replica setup and port-forward pattern as `TC-20`
 
-Run one cycle at a time. Keep the command the same and only change `LOAD_SPLITS`.
+Run one cycle at a time. Use the same command and replace the literal `10,20` with the next split.
 
 Suggested values:
 
@@ -328,12 +483,16 @@ Suggested values:
 - `25,50`
 - `50,100`
 
-Command pattern:
+Recommended calibrated command pattern:
 
 ```bash
 cd ~/Yolo-k8s/load-generator
-LOAD_SPLITS="50,100"
-./run_load_local.sh 600 --percent-loads "$LOAD_SPLITS" --api-url http://127.0.0.1:19081 --api-url http://127.0.0.1:19082 --max-workers-per-instance 10
+./run_load_local.sh 600 \
+  --percent-loads 10,20 \
+  --api-url http://127.0.0.1:19081 \
+  --api-url http://127.0.0.1:19082 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
 ```
 
 Expected behavior:
@@ -341,7 +500,7 @@ Expected behavior:
 - pod 1 and pod 2 receive different request pressure
 - total GPU impact depends on the combined requested load
 
-## TC-50: Three-Instance Varied Load
+## TC-70: Three-Instance Varied Load
 
 Purpose:
 
@@ -351,7 +510,7 @@ Setup:
 
 - use the same `3`-replica setup and port-forward pattern as `TC-30`
 
-Run one cycle at a time. Keep the command the same and only change `LOAD_SPLITS`.
+Run one cycle at a time. Use the same command and replace the literal `10,20,30` with the next split.
 
 Suggested values:
 
@@ -359,12 +518,17 @@ Suggested values:
 - `25,50,75`
 - `50,75,100`
 
-Command pattern:
+Recommended calibrated command pattern:
 
 ```bash
 cd ~/Yolo-k8s/load-generator
-LOAD_SPLITS="50,75,100"
-./run_load_local.sh 600 --percent-loads "$LOAD_SPLITS" --api-url http://127.0.0.1:19081 --api-url http://127.0.0.1:19082 --api-url http://127.0.0.1:19083 --max-workers-per-instance 10
+./run_load_local.sh 600 \
+  --percent-loads 10,20,30 \
+  --api-url http://127.0.0.1:19081 \
+  --api-url http://127.0.0.1:19082 \
+  --api-url http://127.0.0.1:19083 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
 ```
 
 Expected behavior:
@@ -474,6 +638,8 @@ If you want to run the complete series from simplest to most complex, use:
 4. `TC-30`
 5. `TC-40`
 6. `TC-50`
+7. `TC-60`
+8. `TC-70`
 
 That order helps you validate:
 

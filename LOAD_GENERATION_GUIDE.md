@@ -53,10 +53,10 @@ You can run either:
 
 ```bash
 cd ~/Yolo-k8s
-./load-generator/run_load_local.sh <duration-seconds> [workers] [image-size]
-./load-generator/run_load_local.sh <duration-seconds> --percent-load <1-100> [--instance-count N] [--max-workers-per-instance N] [--image-size PX] [--api-url URL]
-./load-generator/run_load_local.sh <duration-seconds> --percent-load <1-100> --api-url URL [--api-url URL ...] [--max-workers-per-instance N] [--image-size PX]
-./load-generator/run_load_local.sh <duration-seconds> --percent-loads <P1,P2,...> --api-url URL [--api-url URL ...] [--max-workers-per-instance N] [--image-size PX]
+./load-generator/run_load_local.sh <duration-seconds> [workers] [image-size] [--worker-delay-ms MS]
+./load-generator/run_load_local.sh <duration-seconds> --percent-load <1-100> [--instance-count N] [--max-workers-per-instance N] [--image-size PX] [--api-url URL] [--worker-delay-ms MS]
+./load-generator/run_load_local.sh <duration-seconds> --percent-load <1-100> --api-url URL [--api-url URL ...] [--max-workers-per-instance N] [--image-size PX] [--worker-delay-ms MS]
+./load-generator/run_load_local.sh <duration-seconds> --percent-loads <P1,P2,...> --api-url URL [--api-url URL ...] [--max-workers-per-instance N] [--image-size PX] [--worker-delay-ms MS]
 ```
 
 Examples:
@@ -66,6 +66,7 @@ Examples:
 ./load-generator/run_load_local.sh 600 --percent-load 10 --api-url http://127.0.0.1:18081 --max-workers-per-instance 10
 ./load-generator/run_load_local.sh 600 --percent-load 10 --api-url http://127.0.0.1:18081 --api-url http://127.0.0.1:18082 --api-url http://127.0.0.1:18083 --max-workers-per-instance 10
 ./load-generator/run_load_local.sh 600 --percent-loads 10,20,30 --api-url http://127.0.0.1:18081 --api-url http://127.0.0.1:18082 --api-url http://127.0.0.1:18083 --max-workers-per-instance 10
+./load-generator/run_load_local.sh 600 --percent-load 20 --api-url http://127.0.0.1:19081 --api-url http://127.0.0.1:19082 --max-workers-per-instance 5 --worker-delay-ms 100
 ```
 
 ### Meaning of percentage mode
@@ -97,6 +98,35 @@ then the script maps that to approximately:
 - pod 3: `3` workers
 
 The script prints the exact mapping before it starts.
+
+### Smoother Low-Load Calibration
+
+If different percentage values are still producing almost the same GPU utilization, the worker-only scale is too coarse for your environment.
+
+In that case:
+
+- reduce `--max-workers-per-instance`
+- add `--worker-delay-ms`
+
+This lowers the request pressure without changing the overall workflow.
+
+Example that worked well in validation for `2` instances:
+
+```bash
+cd ~/Yolo-k8s/load-generator
+PERCENT=20
+./load-generator/run_load_local.sh 600 \
+  --percent-load "$PERCENT" \
+  --api-url http://127.0.0.1:19081 \
+  --api-url http://127.0.0.1:19082 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
+```
+
+Observed sample from that run:
+
+- GPU `sm` mostly around `17%` to `36%`
+- GPU `mem` mostly around `4%` to `7%`
 
 ### Typical experiment workflow
 

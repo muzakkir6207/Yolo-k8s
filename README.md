@@ -187,6 +187,93 @@ cd load-generator
 ./run_load_local.sh 600 --percent-load 10 --api-url http://127.0.0.1:19081 --max-workers-per-instance 10
 ```
 
+### Calibrated Multi-Instance Reference
+
+This command pattern worked better in practice for moderate multi-instance tests because it:
+
+- uses one local target per Yolo pod
+- lowers the worker reference from `10` to `5`
+- adds a small per-worker delay to avoid jumping straight to an overly aggressive load level
+
+Base settings:
+
+- `--percent-load 20`
+- `--max-workers-per-instance 5`
+- `--worker-delay-ms 100`
+
+Setup pattern:
+
+```bash
+kubectl scale deployment yolo-inference -n yolo1 --replicas=<N>
+kubectl rollout status deployment/yolo-inference -n yolo1
+kubectl get pods -n yolo1 -l app=yolo
+```
+
+Start one port-forward per target pod on fresh local ports such as `19081`, `19082`, `19083`, `19084`, `19085`.
+
+Exact execution commands:
+
+For `2` instances:
+
+```bash
+cd load-generator
+./run_load_local.sh 600 \
+  --percent-load 20 \
+  --api-url http://127.0.0.1:19081 \
+  --api-url http://127.0.0.1:19082 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
+```
+
+For `3` instances:
+
+```bash
+cd load-generator
+./run_load_local.sh 600 \
+  --percent-load 20 \
+  --api-url http://127.0.0.1:19081 \
+  --api-url http://127.0.0.1:19082 \
+  --api-url http://127.0.0.1:19083 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
+```
+
+For `4` instances:
+
+```bash
+cd load-generator
+./run_load_local.sh 600 \
+  --percent-load 20 \
+  --api-url http://127.0.0.1:19081 \
+  --api-url http://127.0.0.1:19082 \
+  --api-url http://127.0.0.1:19083 \
+  --api-url http://127.0.0.1:19084 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
+```
+
+For `5` instances:
+
+```bash
+cd load-generator
+./run_load_local.sh 600 \
+  --percent-load 20 \
+  --api-url http://127.0.0.1:19081 \
+  --api-url http://127.0.0.1:19082 \
+  --api-url http://127.0.0.1:19083 \
+  --api-url http://127.0.0.1:19084 \
+  --api-url http://127.0.0.1:19085 \
+  --max-workers-per-instance 5 \
+  --worker-delay-ms 100
+```
+
+Observed GPU behavior from the validated `2`-instance run:
+
+- `sm` was mostly in the `17%` to `36%` range
+- `mem` was mostly in the `4%` to `7%` range
+
+This is a better starting point when the default worker-only scaling is too coarse and different percentage settings collapse into the same effective GPU load.
+
 ---
 
 ## Configuration
