@@ -31,7 +31,8 @@ yolo-k8s-ready/
 │   ├── deployment.yaml     # Load generator K8s manifest
 │   └── README.md           # Load generator usage guide
 ├── README.md               # This file
-├── LOAD_GENERATION_GUIDE.md # Step-by-step load ramp guide
+├── LOAD_GENERATION_GUIDE.md # Step-by-step load generation workflow
+├── LOAD_TEST_CASES.md      # Detailed test-case series for experiments
 └── SCALING_GUIDE.md        # GPU saturation strategies
 ```
 
@@ -159,26 +160,31 @@ kubectl scale deployment <other-gpu-workload> --replicas=1
 
 ## Load Generation & GPU Saturation
 
-See [LOAD_GENERATION_GUIDE.md](LOAD_GENERATION_GUIDE.md) for step-by-step load generation and one-by-one scaling.
+See [LOAD_GENERATION_GUIDE.md](LOAD_GENERATION_GUIDE.md) for the current load-generation workflow.
+
+See [LOAD_TEST_CASES.md](LOAD_TEST_CASES.md) for the full experiment matrix, including:
+
+- 1-instance uniform load sweeps
+- 2-instance and 3-instance uniform load sweeps
+- varied per-instance load cases
+- baseline, cleanup, and troubleshooting steps
 
 See [SCALING_GUIDE.md](SCALING_GUIDE.md) for broader GPU saturation strategies.
 
 ### Quick Load Test
 
 ```bash
-# Deploy load generator
-kubectl apply -f load-generator/deployment.yaml
+kubectl scale deployment yolo-inference -n yolo1 --replicas=1
+kubectl rollout status deployment/yolo-inference -n yolo1
+kubectl get pods -n yolo1 -l app=yolo
 
-# Start with one replica
-kubectl scale deployment yolo-load-generator -n yolo1 --replicas=1
+# Port-forward one selected pod on a fresh local port
+POD1="yolo-inference-xxxx"
+kubectl port-forward --address 127.0.0.1 -n yolo1 pod/$POD1 19081:8080
 
-# Watch load and GPU
-kubectl logs -f deployment/yolo-load-generator
-nvidia-smi dmon -s u -c 20
-
-# Increase one step at a time
-kubectl scale deployment yolo-load-generator -n yolo1 --replicas=2
-kubectl scale deployment yolo-load-generator -n yolo1 --replicas=3
+# Run load locally from another terminal
+cd load-generator
+./run_load_local.sh 600 --percent-load 10 --api-url http://127.0.0.1:19081 --max-workers-per-instance 10
 ```
 
 ---

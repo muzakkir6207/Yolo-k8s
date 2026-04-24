@@ -8,13 +8,22 @@ an explicit user-chosen runtime.
 import argparse
 import io
 import logging
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-import numpy as np
 import requests
-from PIL import Image
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,20 +44,29 @@ class LoadGenerator:
         self.lock = threading.Lock()
 
     def generate_random_image(self):
-        """Generate a random RGB JPEG payload."""
-        img_array = np.random.randint(0, 255, (self.image_size, self.image_size, 3), dtype=np.uint8)
-        img = Image.fromarray(img_array)
+        """Generate a random RGB image payload."""
+        if np is not None and Image is not None:
+            img_array = np.random.randint(0, 255, (self.image_size, self.image_size, 3), dtype=np.uint8)
+            img = Image.fromarray(img_array)
 
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format='JPEG')
+            img_bytes = io.BytesIO()
+            img.save(img_bytes, format='JPEG')
+            img_bytes.seek(0)
+            return img_bytes, "image/jpeg", "test.jpg"
+
+        # Fallback for local terminals that have requests but not numpy/Pillow.
+        # PPM is trivial to generate with the stdlib and Pillow on the server can open it.
+        header = f"P6\n{self.image_size} {self.image_size}\n255\n".encode("ascii")
+        payload = header + os.urandom(self.image_size * self.image_size * 3)
+        img_bytes = io.BytesIO(payload)
         img_bytes.seek(0)
-        return img_bytes
+        return img_bytes, "image/x-portable-pixmap", "test.ppm"
 
     def send_request(self, worker_id):
         """Send a single inference request."""
         try:
-            img_bytes = self.generate_random_image()
-            files = {'image': ('test.jpg', img_bytes, 'image/jpeg')}
+            img_bytes, content_type, filename = self.generate_random_image()
+            files = {'image': (filename, img_bytes, content_type)}
 
             start_time = time.time()
             response = requests.post(f"{self.api_url}/predict", files=files, timeout=30)
